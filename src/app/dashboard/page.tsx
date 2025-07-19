@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Video, Clock, Users, Code } from 'lucide-react';
+import { Plus, Video, Clock, Users, Code, LogIn, Mail, Lock } from 'lucide-react';
 
 interface InterviewSession {
   id: string;
@@ -38,7 +38,12 @@ export default function DashboardPage() {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
+    participantEmail: '',
+    allowPublicJoin: false,
   });
+  const [showJoinForm, setShowJoinForm] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+  const [joinLoading, setJoinLoading] = useState(false);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -79,8 +84,28 @@ export default function DashboardPage() {
       if (response.ok) {
         const newSession = await response.json();
         setSessions([newSession, ...sessions]);
-        setFormData({ title: '', description: '' });
+        setFormData({ title: '', description: '', participantEmail: '', allowPublicJoin: false });
         setShowCreateForm(false);
+        
+        // Send invitation if participant email provided
+        if (formData.participantEmail) {
+          try {
+            await fetch('/api/invitations', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                sessionId: newSession.id,
+                email: formData.participantEmail,
+              }),
+            });
+            console.log('Invitation sent to:', formData.participantEmail);
+          } catch (error) {
+            console.error('Error sending invitation:', error);
+          }
+        }
+        
         router.push(`/interview/${newSession.roomId}`);
       }
     } catch (error) {
@@ -90,6 +115,35 @@ export default function DashboardPage() {
 
   const joinSession = (roomId: string) => {
     router.push(`/interview/${roomId}`);
+  };
+
+  const joinByCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!joinCode.trim()) return;
+    
+    setJoinLoading(true);
+    try {
+      const response = await fetch('/api/join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code: joinCode.trim() }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        router.push(data.redirectUrl);
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to join session');
+      }
+    } catch (error) {
+      console.error('Error joining session:', error);
+      alert('Failed to join session');
+    } finally {
+      setJoinLoading(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -137,11 +191,65 @@ export default function DashboardPage() {
             Welcome back, {session?.user?.name || 'User'}
           </p>
         </div>
-        <Button onClick={() => setShowCreateForm(true)} className="flex items-center gap-2">
-          <Plus className="h-4 w-4" />
-          Create Interview
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => setShowJoinForm(true)} variant="outline" className="flex items-center gap-2">
+            <LogIn className="h-4 w-4" />
+            Join Interview
+          </Button>
+          <Button onClick={() => setShowCreateForm(true)} className="flex items-center gap-2">
+            <Plus className="h-4 w-4" />
+            Create Interview
+          </Button>
+        </div>
       </div>
+
+      {showJoinForm && (
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Join Interview Session</CardTitle>
+            <CardDescription>
+              Enter a join code or paste an interview link to join a session.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={joinByCode} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="joinCode">Join Code or Link</Label>
+                <Input
+                  id="joinCode"
+                  placeholder="Enter join code or paste interview link"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value)}
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  You can enter either a 6-digit join code or paste the full interview link
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button type="submit" disabled={joinLoading} className="flex items-center gap-2">
+                  {joinLoading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  ) : (
+                    <LogIn className="h-4 w-4" />
+                  )}
+                  {joinLoading ? 'Joining...' : 'Join Interview'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowJoinForm(false);
+                    setJoinCode('');
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       {showCreateForm && (
         <Card className="mb-8">
@@ -171,6 +279,31 @@ export default function DashboardPage() {
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="participantEmail">Participant Email (Optional)</Label>
+                <Input
+                  id="participantEmail"
+                  type="email"
+                  placeholder="participant@example.com"
+                  value={formData.participantEmail}
+                  onChange={(e) => setFormData({ ...formData, participantEmail: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  An invitation will be sent to this email automatically
+                </p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="allowPublicJoin"
+                  checked={formData.allowPublicJoin}
+                  onChange={(e) => setFormData({ ...formData, allowPublicJoin: e.target.checked })}
+                  className="rounded"
+                />
+                <Label htmlFor="allowPublicJoin" className="text-sm">
+                  Allow anyone with the link or code to join
+                </Label>
               </div>
               <div className="flex gap-2">
                 <Button type="submit">Create & Join</Button>

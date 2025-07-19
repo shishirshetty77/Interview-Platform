@@ -62,19 +62,23 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, description } = body;
+    const { title, description, participantEmail, allowPublicJoin = false } = body;
 
     if (!title) {
       return NextResponse.json({ error: 'Title is required' }, { status: 400 });
     }
 
     const roomId = nanoid(10);
+    const joinCode = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit code
 
     const interviewSession = await prisma.interviewSession.create({
       data: {
         roomId,
+        joinCode,
         title,
         description,
+        participantEmail,
+        allowPublicJoin,
         status: 'waiting',
         hostId: user.id,
       },

@@ -78,8 +78,13 @@ model InterviewSession {
   
   // Interview room settings
   roomId           String    @unique
+  joinCode         String?   @unique // 6-digit code for easy joining
   maxParticipants  Int       @default(2)
   recordingEnabled Boolean   @default(false)
+  
+  // Invitation settings
+  participantEmail String?   // Email of invited participant
+  allowPublicJoin  Boolean   @default(false) // Allow anyone with link/code to join
   
   // Code editor content
   codeContent String?
@@ -88,10 +93,28 @@ model InterviewSession {
   // Chat messages
   chatMessages ChatMessage[]
   
+  // Relations
+  invitations  Invitation[]
+  
   startedAt   DateTime?
   endedAt     DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+model Invitation {
+  id        String   @id @default(cuid())
+  email     String
+  status    String   @default("pending") // pending, accepted, declined
+  token     String   @unique
+  
+  sessionId String
+  session   InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  sentAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+  
+  @@unique([email, sessionId])
 }
 
 model ChatMessage {
