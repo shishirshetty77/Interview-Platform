@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Video, Clock, Users, Code, LogIn, Mail, Lock } from 'lucide-react';
+import { Plus, Video, Clock, Users, Code, LogIn, Mail, Lock, Trash2, Copy, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 
 interface InterviewSession {
   id: string;
@@ -17,6 +17,7 @@ interface InterviewSession {
   description?: string;
   status: string;
   roomId: string;
+  joinCode?: string;
   host: {
     name: string;
     email: string;
@@ -44,6 +45,7 @@ export default function DashboardPage() {
   const [showJoinForm, setShowJoinForm] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -143,6 +145,43 @@ export default function DashboardPage() {
       alert('Failed to join session');
     } finally {
       setJoinLoading(false);
+    }
+  };
+
+  const deleteSession = async (sessionId: string) => {
+    if (!confirm('Are you sure you want to delete this interview session? This action cannot be undone.')) {
+      return;
+    }
+
+    setDeletingSessionId(sessionId);
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        // Remove the session from the local state
+        setSessions(sessions.filter(session => session.id !== sessionId));
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to delete session');
+      }
+    } catch (error) {
+      console.error('Error deleting session:', error);
+      alert('Failed to delete session');
+    } finally {
+      setDeletingSessionId(null);
+    }
+  };
+
+  const copyJoinCode = async (joinCode: string) => {
+    try {
+      await navigator.clipboard.writeText(joinCode);
+      // You could add a toast notification here if you have one
+      alert('Join code copied to clipboard!');
+    } catch (error) {
+      console.error('Failed to copy join code:', error);
+      alert('Failed to copy join code');
     }
   };
 
@@ -321,50 +360,87 @@ export default function DashboardPage() {
       )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {sessions.map((session) => (
-          <Card key={session.id} className="hover:shadow-lg transition-shadow">
+        {sessions.map((interview) => (
+          <Card key={interview.id} className="hover:shadow-lg transition-shadow">
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
-                  <CardTitle className="text-lg">{session.title}</CardTitle>
+                  <CardTitle className="text-lg">{interview.title}</CardTitle>
                   <CardDescription className="text-sm">
-                    Host: {session.host.name}
+                    Host: {interview.host.name}
                   </CardDescription>
                 </div>
-                <Badge className={`${getStatusColor(session.status)} flex items-center gap-1`}>
-                  {getStatusIcon(session.status)}
-                  {session.status}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge className={`${getStatusColor(interview.status)} flex items-center gap-1`}>
+                    {getStatusIcon(interview.status)}
+                    {interview.status}
+                  </Badge>
+                  {/* Only show delete button if user is the host */}
+                  {interview.host.email === session?.user?.email && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => deleteSession(interview.id)}
+                      disabled={deletingSessionId === interview.id}
+                    >
+                      {deletingSessionId === interview.id ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {session.description && (
-                <p className="text-sm text-muted-foreground">{session.description}</p>
+              {interview.description && (
+                <p className="text-sm text-muted-foreground">{interview.description}</p>
               )}
               
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Users className="h-4 w-4" />
                 <span>
-                  {session.participant 
-                    ? `${session.participant.name} joined`
+                  {interview.participant 
+                    ? `${interview.participant.name} joined`
                     : 'Waiting for participant'
                   }
                 </span>
               </div>
 
-              <div className="text-xs text-muted-foreground">
-                Created: {new Date(session.createdAt).toLocaleDateString()}
-                {session.startedAt && (
-                  <> • Started: {new Date(session.startedAt).toLocaleDateString()}</>
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground">
+                  Created: {new Date(interview.createdAt).toLocaleDateString()}
+                  {interview.startedAt && (
+                    <> • Started: {new Date(interview.startedAt).toLocaleDateString()}</>
+                  )}
+                </div>
+                
+                {interview.joinCode && (
+                  <div className="flex items-center justify-between p-2 bg-gray-50 rounded border">
+                    <div className="flex items-center gap-2">
+                      <Code className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-mono text-black">{interview.joinCode}</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0"
+                      onClick={() => copyJoinCode(interview.joinCode!)}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
                 )}
               </div>
 
               <Button 
-                onClick={() => joinSession(session.roomId)}
+                onClick={() => joinSession(interview.roomId)}
                 className="w-full"
-                variant={session.status === 'active' ? 'default' : 'outline'}
+                variant={interview.status === 'active' ? 'default' : 'outline'}
               >
-                {session.status === 'active' ? 'Rejoin Interview' : 'Join Interview'}
+                {interview.status === 'active' ? 'Rejoin Interview' : 'Join Interview'}
               </Button>
             </CardContent>
           </Card>
